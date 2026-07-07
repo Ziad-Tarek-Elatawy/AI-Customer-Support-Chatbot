@@ -21,7 +21,7 @@ This document maps our 6 team members directly to the official project Milestone
     *   **Preprocessing:** Clean, unify, and tokenize the text data securely (save to `data/processed/`).
     *   **EDA:** Analyze common queries and write the **Support Data EDA Report** (e.g., in `notebooks/eda.ipynb`).
 
-## 3. Mohamed Mashhour & Mohamoud Youssef - Machine Learning Engineers
+## 3. Mohamed Mashhour & Mahmoud Youssef - Machine Learning Engineers
 **Focus:** Core AI Pipeline & MLOps (Milestone 2 & 4).
 *   **Workspace / Folders:** `backend/ai/` and `notebooks/`.
 *   **Tasks:**
