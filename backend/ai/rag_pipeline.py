@@ -9,6 +9,7 @@ from langchain_chroma import Chroma
 from langchain_openai import ChatOpenAI
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, AIMessage
 
 load_dotenv()
 
@@ -41,8 +42,7 @@ SYSTEM_PROMPT = (
     "- Use numbered steps for procedures.\n"
     "- Use bullet points for lists.\n"
     "- Replace placeholders like {{Order Number}} by politely asking the user to provide that value.\n"
-    "- Be concise and helpful — no filler text.\n\n"
-    "Context:\n{context}"
+    "- Be concise and helpful — no filler text.\n"
 )
 
 
@@ -58,9 +58,9 @@ class CustomerSupportRAG:
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         chroma_dir = os.path.join(base_dir, "data", "chroma_db")
 
-        api_key = os.getenv("OPENROUTER_API_KEY")
+        api_key = os.getenv("DEEPSEEK_API_KEY")
         if not api_key:
-            raise EnvironmentError("OPENROUTER_API_KEY is not set in environment variables")
+            raise EnvironmentError("DEEPSEEK_API_KEY is not set in environment variables")
 
         self.embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 
@@ -69,20 +69,43 @@ class CustomerSupportRAG:
             embedding_function=self.embeddings,
         )
 
+        self.settings = self._load_settings()
+
         self.llm = ChatOpenAI(
-            base_url="https://openrouter.ai/api/v1",
+            base_url="https://api.deepseek.com",
             api_key=api_key,
-            model="nvidia/nemotron-3-super-120b-a12b:free",
-            temperature=0.1,
+            model=self.settings.get("model", "deepseek-v4-flash"),
+            temperature=self.settings.get("temperature", 0.7),
             max_tokens=1024,
             timeout=30,
+            streaming=True
         )
 
         self.qa_chain = self._build_qa_chain()
 
+    def _load_settings(self):
+        settings_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "settings.json")
+        if os.path.exists(settings_path):
+            import json
+            with open(settings_path, "r") as f:
+                return json.load(f)
+        return {
+            "systemPrompt": SYSTEM_PROMPT,
+            "temperature": 0.7,
+            "model": "deepseek-v4-flash"
+        }
+
+    def update_settings(self, settings: dict):
+        self.settings = settings
+        self.llm.temperature = settings.get("temperature", 0.7)
+        self.llm.model_name = settings.get("model", "deepseek-v4-flash")
+        self.llm.streaming = True
+        self.qa_chain = self._build_qa_chain()
+
     def _build_qa_chain(self):
         prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_PROMPT),
+            ("system", self.settings.get("systemPrompt", SYSTEM_PROMPT) + "\n\nContext:\n{context}"),
+            ("placeholder", "{chat_history}"),
             ("human", "{input}"),
         ])
         return create_stuff_documents_chain(self.llm, prompt)
@@ -94,7 +117,7 @@ class CustomerSupportRAG:
         )
         return [(doc, score) for doc, score in results if score >= RELEVANCE_THRESHOLD]
 
-    def get_response(self, user_query: str) -> RAGResult:
+    def get_response(self, user_query: str, history: list = None) -> RAGResult:
         user_query = user_query.strip()
         if not user_query:
             return RAGResult(answer="Please provide a question so I can help you.")
@@ -118,9 +141,18 @@ class CustomerSupportRAG:
                     context_docs = [Document(page_content="No relevant information found in the knowledge base.")]
                     avg_score = 0.0
 
+                langchain_history = []
+                if history:
+                    for msg in history:
+                        if getattr(msg, 'sender', '') == 'user':
+                            langchain_history.append(HumanMessage(content=getattr(msg, 'text', '')))
+                        elif getattr(msg, 'sender', '') == 'bot':
+                            langchain_history.append(AIMessage(content=getattr(msg, 'text', '')))
+
                 answer = self.qa_chain.invoke({
                     "input": user_query,
                     "context": context_docs,
+                    "chat_history": langchain_history
                 })
 
                 sources = []
@@ -158,6 +190,52 @@ class CustomerSupportRAG:
 
         return RAGResult(answer="Unable to process your request after multiple attempts. Please try again later.")
 
+    def stream_response(self, user_query: str, history: list = None):
+        user_query = user_query.strip()
+        if not user_query:
+            yield {"type": "chunk", "content": "Please provide a question so I can help you."}
+            return
+
+        if user_query.lower().rstrip("!?.") in GREETINGS:
+            yield {"type": "chunk", "content": "Hello! Welcome to our support. How can I help you today?"}
+            yield {"type": "confidence", "content": 1.0}
+            return
+
+        try:
+            docs_with_scores = self._retrieve(user_query)
+            if docs_with_scores:
+                context_docs = [doc for doc, _ in docs_with_scores]
+                avg_score = sum(s for _, s in docs_with_scores) / len(docs_with_scores)
+            else:
+                from langchain_core.documents import Document
+                context_docs = [Document(page_content="No relevant information found in the knowledge base.")]
+                avg_score = 0.0
+
+            langchain_history = []
+            if history:
+                for msg in history:
+                    if getattr(msg, 'sender', '') == 'user':
+                        langchain_history.append(HumanMessage(content=getattr(msg, 'text', '')))
+                    elif getattr(msg, 'sender', '') == 'bot':
+                        langchain_history.append(AIMessage(content=getattr(msg, 'text', '')))
+
+            for chunk in self.qa_chain.stream({
+                "input": user_query,
+                "context": context_docs,
+                "chat_history": langchain_history
+            }):
+                if isinstance(chunk, str):
+                    yield {"type": "chunk", "content": chunk}
+                elif hasattr(chunk, 'content'):
+                    yield {"type": "chunk", "content": chunk.content}
+                elif isinstance(chunk, dict) and "answer" in chunk:
+                    yield {"type": "chunk", "content": chunk["answer"]}
+
+            yield {"type": "confidence", "content": round(avg_score, 2)}
+        except Exception as e:
+            logger.error("RAG pipeline streaming error: %s", str(e))
+            yield {"type": "error", "content": " Something went wrong while processing your question."}
+
 
 _rag_instance: CustomerSupportRAG | None = None
 
@@ -171,9 +249,17 @@ def _get_instance() -> CustomerSupportRAG:
     return _rag_instance
 
 
-def get_rag_response(user_query: str) -> str:
-    return _get_instance().get_response(user_query).answer
+def get_rag_response(user_query: str, history: list = None) -> str:
+    return _get_instance().get_response(user_query, history).answer
 
 
-def get_rag_response_full(user_query: str) -> RAGResult:
-    return _get_instance().get_response(user_query)
+def get_rag_response_full(user_query: str, history: list = None) -> RAGResult:
+    return _get_instance().get_response(user_query, history)
+
+def stream_rag_response(user_query: str, history: list = None):
+    return _get_instance().stream_response(user_query, history)
+
+def reload_settings(settings: dict):
+    global _rag_instance
+    if _rag_instance is not None:
+        _rag_instance.update_settings(settings)
