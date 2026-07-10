@@ -58,7 +58,7 @@ const Chat = () => {
     let isStreamStarted = false;
 
     try {
-      const res = await fetch('http://127.0.0.1:8001/chat/stream', {
+      const res = await fetch('/chat/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

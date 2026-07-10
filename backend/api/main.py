@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import sys
@@ -236,6 +236,23 @@ async def delete_knowledge(filename: str, api_key: str = Depends(get_api_key)):
             raise HTTPException(status_code=500, detail=str(e))
     
     raise HTTPException(status_code=404, detail="File not found.")
+
+frontend_path = os.path.join(BASE_DIR, "frontend", "dist")
+
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    if full_path.startswith("api/") or full_path.startswith("chat"):
+        raise HTTPException(status_code=404)
+        
+    path = os.path.join(frontend_path, full_path)
+    if os.path.exists(path) and os.path.isfile(path):
+        return FileResponse(path)
+        
+    index_path = os.path.join(frontend_path, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+        
+    return {"status": "Frontend not built yet or not found"}
 
 # 6. Server Execution
 if __name__ == "__main__":

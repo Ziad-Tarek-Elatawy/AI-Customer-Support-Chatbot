@@ -11,7 +11,7 @@ const KnowledgeBase = () => {
 
   const fetchDocuments = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8001/api/knowledge', { headers: { 'X-API-Key': 'dev-secret-key' } });
+      const res = await fetch('/api/knowledge', { headers: { 'X-API-Key': 'dev-secret-key' } });
       const data = await res.json();
       setDocuments(data.documents || []);
     } catch (e) {
@@ -28,7 +28,7 @@ const KnowledgeBase = () => {
     formData.append('file', file);
 
     try {
-      await fetch('http://127.0.0.1:8001/api/knowledge/upload', {
+      await fetch('/api/knowledge/upload', {
         method: 'POST',
         headers: { 'X-API-Key': 'dev-secret-key' },
         body: formData
@@ -45,7 +45,7 @@ const KnowledgeBase = () => {
     if (!window.confirm(`Are you sure you want to delete ${filename}?`)) return;
     
     try {
-      await fetch(`http://127.0.0.1:8001/api/knowledge/${filename}`, {
+      await fetch(`/api/knowledge/${filename}`, {
         method: 'DELETE',
         headers: { 'X-API-Key': 'dev-secret-key' }
       });

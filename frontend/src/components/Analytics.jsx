@@ -42,7 +42,7 @@ const Analytics = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch('http://127.0.0.1:8001/api/stats', { headers: { 'X-API-Key': 'dev-secret-key' } });        const data = await res.json();
+        const res = await fetch('/api/stats', { headers: { 'X-API-Key': 'dev-secret-key' } });        const data = await res.json();
         if (data && data.total_messages !== undefined) {
           setStats(data);
           

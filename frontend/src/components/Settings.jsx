@@ -11,7 +11,7 @@ const Settings = () => {
   });
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8001/api/settings', { headers: { 'X-API-Key': 'dev-secret-key' } })
+    fetch('/api/settings', { headers: { 'X-API-Key': 'dev-secret-key' } })
       .then(res => res.json())
       .then(data => setConfig({
         systemPrompt: data.systemPrompt || "",
@@ -25,7 +25,7 @@ const Settings = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await fetch('http://127.0.0.1:8001/api/settings', {
+      await fetch('/api/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
