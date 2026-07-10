@@ -212,15 +212,36 @@ async def get_knowledge(api_key: str = Depends(get_api_key)):
 
 @app.post("/api/knowledge/upload")
 async def upload_knowledge(file: UploadFile = File(...), api_key: str = Depends(get_api_key)):
-    """Upload a file to the knowledge base"""
+    """
+    Upload a file to the knowledge base and trigger automatic ingestion.
+    """
+    from backend.ai.ingest import ingest_single_file
+    
+    # Define the directory where raw files are stored
     raw_dir = os.path.join(BASE_DIR, "data", "raw")
     os.makedirs(raw_dir, exist_ok=True)
     
+    # Save the uploaded file to the raw directory
     file_path = os.path.join(raw_dir, file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+    
+    # Trigger the ingestion process to index the file into ChromaDB
+    try:
+        ingest_single_file(file_path)
+    except Exception as e:
+        logger.error("Automatic ingestion failed for file %s: %s", file.filename, str(e))
+        return {
+            "filename": file.filename, 
+            "status": "error", 
+            "message": "File uploaded, but failed to index."
+        }
         
-    return {"filename": file.filename, "status": "success", "message": "File uploaded and indexed successfully."}
+    return {
+        "filename": file.filename, 
+        "status": "success", 
+        "message": "File uploaded and indexed successfully."
+    }
 
 @app.delete("/api/knowledge/{filename}")
 async def delete_knowledge(filename: str, api_key: str = Depends(get_api_key)):

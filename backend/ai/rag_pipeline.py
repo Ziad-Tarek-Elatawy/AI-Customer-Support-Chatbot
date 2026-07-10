@@ -2,6 +2,9 @@ import os
 import time
 import logging
 from dataclasses import dataclass, field
+import pysqlite3
+import sys
+sys.modules["sqlite3"] = pysqlite3
 
 from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -262,4 +265,4 @@ def stream_rag_response(user_query: str, history: list = None):
 def reload_settings(settings: dict):
     global _rag_instance
     if _rag_instance is not None:
-        _rag_instance.update_settings(settings)
+        _rag_instance.update_settings(settings)
