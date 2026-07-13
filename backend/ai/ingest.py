@@ -127,3 +127,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ingest_data(reset=args.reset)
+
+def ingest_single_file(file_path: str):
+    """Ingests a single text file into ChromaDB."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    
+    # تحويل النص لـ Document
+    doc = Document(page_content=content, metadata={"source": os.path.basename(file_path)})
+    
+    # تقسيم النص
+    chunks = _smart_split([doc])
+    
+    # تحميل الـ Embeddings وإضافتها للـ DB
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    store = Chroma(persist_directory=CHROMA_DB_DIR, embedding_function=embeddings)
+    store.add_documents(chunks)
+    logger.info("Successfully ingested %s", file_path)
